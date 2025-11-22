@@ -101,32 +101,87 @@
     </div>
 
     <script>
-        fetch("https://jstaca.blogspot.com/feeds/posts/default?alt=json")
-            .then(res => res.json())
-            .then(data => {
-                const posts = data.feed.entry || [];
-                let html = "";
+        function bloggerCallback(data) {
+            const posts = (data.feed && data.feed.entry) ? data.feed.entry : [];
+            let html = "";
 
-                posts.forEach(p => {
-                    const title = p.title.$t;
-                    const link = p.link.find(l => l.rel === "alternate").href;
-                    const content = p.content.$t.substring(0, 150) + "...";
+            // helper: recursively force inline transparent styles with !important
+            function forceTransparent(el) {
+                if (!el || el.nodeType !== 1) return; // only element nodes
+                // Apply inline styles with !important to override external CSS
+                el.style.setProperty('background', 'transparent', 'important');
+                el.style.setProperty('background-color', 'transparent', 'important');
+                el.style.setProperty('box-shadow', 'none', 'important');
+                el.style.setProperty('border', 'none', 'important');
+                el.style.setProperty('outline', 'none', 'important');
 
-                    html += `
-        <div class="post">
-          <h3><a href="${link}" target="_blank">${title}</a></h3>
-          <p>${content}</p>
-          <hr>
-        </div>
-      `;
-                });
+                // Some templates use background on pseudo-elements — we can't touch pseudo-elements,
+                // but setting background on the element itself usually overrides visible white areas.
 
-                document.getElementById("blog-posts").innerHTML = html;
-            })
-            .catch(err => {
-                document.getElementById("blog-posts").innerHTML = "Unable to load blog posts.";
+                // Walk children
+                const children = el.children;
+                for (let i = 0; i < children.length; i++) {
+                    forceTransparent(children[i]);
+                }
+            }
+
+            posts.forEach(p => {
+                const title = (p.title && p.title.$t) ? p.title.$t : "No title";
+                const linkObj = (p.link || []).find(l => l.rel === "alternate");
+                const link = linkObj ? linkObj.href : "#";
+                // content from blogger (may include inline styles or its own wrappers)
+                let raw = (p.content && p.content.$t) ? p.content.$t.substring(0, 1200) + "..." : (p.summary && p.summary.$t) ? p.summary.$t : "";
+                
+
+                // Parse content into a DOM node so we can inject inline styles into every element.
+                const wrapper = document.createElement('div');
+                wrapper.innerHTML = raw;
+
+                function forceStyles(el) {
+                    if (!el || el.nodeType !== 1) return;
+                    el.style.setProperty('background', 'transparent', 'important');
+                    el.style.setProperty('background-color', 'transparent', 'important');
+                    el.style.setProperty('box-shadow', 'none', 'important');
+                    el.style.setProperty('border', 'none', 'important');
+                    el.style.setProperty('outline', 'none', 'important');
+                    el.style.setProperty('color', '#aaa', 'important'); // <-- force black text
+
+                    // Remove old bgcolor attributes
+                    if (el.hasAttribute('bgcolor')) el.removeAttribute('bgcolor');
+
+                    // Recurse into children
+                    for (let i = 0; i < el.children.length; i++) {
+                        forceStyles(el.children[i]);
+                    }
+                }
+
+                // Apply to all content
+                forceStyles(wrapper);
+
+                // Now get the cleaned, fully-styled HTML
+                const cleanedContent = wrapper.innerHTML;
+                // Compose the post HTML — include additional inline styles on the outer box as safeguard
+                html += `
+      <div class="box" style="background: transparent !important; background-color: transparent !important; box-shadow: none !important; border: none !important; padding: 1rem;">
+        <h3 style="background: transparent !important; margin-top:0;"><a href="${link}" target="_blank" style="background: transparent !important; text-decoration: none;">${title}</a></h3>
+        <div style="background: transparent !important; padding: 0; " class="post-content">${cleanedContent}</div>
+        <hr style="background: transparent !important; border: none; height: 1px; color: #ddd;">
+      </div>
+    `;
             });
+
+            const container = document.getElementById("blog-posts");
+            if (container) {
+                container.innerHTML = html;
+                // Extra: force blog-posts container itself transparent
+                container.style.setProperty('background', 'transparent', 'important');
+                container.style.setProperty('background-color', 'transparent', 'important');
+            }
+        }
     </script>
+
+
+    <script src="https://jstaca.blogspot.com/feeds/posts/default?alt=json-in-script&callback=bloggerCallback"></script>
 
     <script src="assets/js/footer.js"></script>
     <!-- Other Scripts -->
